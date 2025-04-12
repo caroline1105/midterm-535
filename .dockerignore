@@ -1,0 +1,9 @@
+.git
+.gitignore
+.env
+*.md
+Jenkinsfile
+sonar-project.properties
+deployment.yaml
+target/
+*.class
