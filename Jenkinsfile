@@ -3,7 +3,7 @@ pipeline {
     
     environment {
         DOCKER_CREDENTIALS = credentials('docker-hub-credentials')
-        DOCKER_IMAGE = 'your-dockerhub-username/java-app'
+        DOCKER_IMAGE = 'caroline1105/java-app'
         DOCKER_TAG = "${BUILD_NUMBER}"
     }
     
