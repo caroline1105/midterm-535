@@ -8,7 +8,7 @@ pipeline {
     }
     
     tools {
-        jdk 'JDK-17'  // For building
+        jdk 'JDK-17'  // Make sure this is configured in Jenkins Global Tool Configuration
     }
     
     stages {
@@ -20,50 +20,42 @@ pipeline {
         
         stage('Build with Java 17') {
             steps {
-                sh 'javac src/Main.java'
+                bat 'javac src\\Main.java'
             }
         }
-          stage('Run Tests with Java 11') {
+
+        stage('Run Tests with Java 11') {
             tools {
                 jdk 'JDK-11'
             }
             steps {
-                sh '''
-                    # Create lib directory if it doesn't exist
-                    mkdir -p lib
-                    
-                    # Download JUnit and Hamcrest if they don't exist
-                    if [ ! -f lib/junit-4.13.2.jar ]; then
-                        curl -L https://repo1.maven.org/maven2/junit/junit/4.13.2/junit-4.13.2.jar -o lib/junit-4.13.2.jar
-                    fi
-                    if [ ! -f lib/hamcrest-core-1.3.jar ]; then
-                        curl -L https://repo1.maven.org/maven2/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar -o lib/hamcrest-core-1.3.jar
-                    fi
-                    
-                    # Run tests
-                    javac -cp "lib/junit-4.13.2.jar:." src/MyTests.java src/Main.java
-                    java -cp "lib/junit-4.13.2.jar:lib/hamcrest-core-1.3.jar:.:src" org.junit.runner.JUnitCore MyTests
+                bat '''
+                    if not exist lib mkdir lib
+                    curl -L -o lib\\junit-4.13.2.jar https://repo1.maven.org/maven2/junit/junit/4.13.2/junit-4.13.2.jar
+                    curl -L -o lib\\hamcrest-core-1.3.jar https://repo1.maven.org/maven2/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar
+                    javac -cp "lib\\junit-4.13.2.jar;." src\\MyTests.java src\\Main.java
+                    java -cp "lib\\junit-4.13.2.jar;lib\\hamcrest-core-1.3.jar;.\\src" org.junit.runner.JUnitCore MyTests
                 '''
             }
         }
-        
+
         stage('Code Quality Analysis with Java 8') {
             tools {
                 jdk 'JDK-8'
             }
             steps {
                 withSonarQubeEnv('SonarQube') {
-                    sh '''
-                        sonar-scanner \
-                            -Dsonar.projectKey=java-app \
-                            -Dsonar.sources=src \
-                            -Dsonar.java.binaries=. \
-                            -Dsonar.host.url=http://your-sonarqube-url:9000
+                    bat '''
+                        sonar-scanner ^
+                          -Dsonar.projectKey=java-app ^
+                          -Dsonar.sources=src ^
+                          -Dsonar.java.binaries=. ^
+                          -Dsonar.host.url=http://localhost:9000
                     '''
                 }
             }
         }
-        
+
         stage('Build Docker Image') {
             steps {
                 script {
@@ -71,7 +63,7 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Push to Docker Registry') {
             steps {
                 script {
@@ -82,13 +74,13 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Deploy to Kubernetes') {
             steps {
                 script {
                     withKubeConfig([credentialsId: 'kubernetes-credentials']) {
-                        sh '''
-                            sed -i "s|java-app:latest|${DOCKER_IMAGE}:${DOCKER_TAG}|g" deployment.yaml
+                        bat '''
+                            powershell -Command "(Get-Content deployment.yaml).replace('java-app:latest', '${DOCKER_IMAGE}:${DOCKER_TAG}') | Set-Content deployment.yaml"
                             kubectl apply -f deployment.yaml
                         '''
                     }
@@ -96,7 +88,7 @@ pipeline {
             }
         }
     }
-    
+
     post {
         always {
             cleanWs()
