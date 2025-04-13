@@ -1,23 +1,23 @@
 pipeline {
     agent any
-    
+
     environment {
         DOCKER_CREDENTIALS = credentials('docker-hub-credentials')
         DOCKER_IMAGE = 'caroline1105/java-app'
         DOCKER_TAG = "${BUILD_NUMBER}"
     }
-    
+
     tools {
-        jdk 'JDK-17'  // Make sure this is configured in Jenkins Global Tool Configuration
+        jdk 'JDK-17'
     }
-    
+
     stages {
         stage('Checkout') {
             steps {
                 checkout scm
             }
         }
-        
+
         stage('Build with Java 17') {
             steps {
                 bat 'javac src\\Main.java'
@@ -47,10 +47,10 @@ pipeline {
                 withSonarQubeEnv('SonarQube') {
                     bat '''
                         sonar-scanner ^
-                          -Dsonar.projectKey=java-app ^
-                          -Dsonar.sources=src ^
-                          -Dsonar.java.binaries=. ^
-                          -Dsonar.host.url=http://localhost:9000
+                        -Dsonar.projectKey=java-app ^
+                        -Dsonar.sources=src ^
+                        -Dsonar.java.binaries=. ^
+                        -Dsonar.host.url=http://localhost:9000
                     '''
                 }
             }
@@ -79,10 +79,10 @@ pipeline {
             steps {
                 script {
                     withKubeConfig([credentialsId: 'kubernetes-credentials']) {
-                        bat '''
-                            powershell -Command "(Get-Content deployment.yaml).replace('java-app:latest', '${DOCKER_IMAGE}:${DOCKER_TAG}') | Set-Content deployment.yaml"
+                        bat """
+                            powershell -Command "(Get-Content deployment.yaml) -replace 'java-app:latest', '${DOCKER_IMAGE}:${DOCKER_TAG}' | Set-Content deployment.yaml"
                             kubectl apply -f deployment.yaml
-                        '''
+                        """
                     }
                 }
             }
