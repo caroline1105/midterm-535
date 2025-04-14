@@ -31,10 +31,12 @@ pipeline {
             steps {
                 bat '''
                     if not exist lib mkdir lib
+
                     curl -L -o lib\\junit-4.13.2.jar https://repo1.maven.org/maven2/junit/junit/4.13.2/junit-4.13.2.jar
                     curl -L -o lib\\hamcrest-core-1.3.jar https://repo1.maven.org/maven2/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar
+
                     javac -cp "lib\\junit-4.13.2.jar;." src\\MyTests.java src\\Main.java
-                    java -cp "lib\\junit-4.13.2.jar;lib\\hamcrest-core-1.3.jar;.\\src" org.junit.runner.JUnitCore MyTests
+                    java -cp "lib\\junit-4.13.2.jar;lib\\hamcrest-core-1.3.jar;.;src" org.junit.runner.JUnitCore MyTests
                 '''
             }
         }
@@ -46,7 +48,7 @@ pipeline {
             steps {
                 withSonarQubeEnv('SonarQube') {
                     bat '''
-                        sonar-scanner ^
+                        "%SONAR_RUNNER_HOME%\\bin\\sonar-scanner.bat" ^
                         -Dsonar.projectKey=java-app ^
                         -Dsonar.sources=src ^
                         -Dsonar.java.binaries=. ^
@@ -79,10 +81,10 @@ pipeline {
             steps {
                 script {
                     withKubeConfig([credentialsId: 'kubernetes-credentials']) {
-                        bat """
+                        bat '''
                             powershell -Command "(Get-Content deployment.yaml) -replace 'java-app:latest', '${DOCKER_IMAGE}:${DOCKER_TAG}' | Set-Content deployment.yaml"
                             kubectl apply -f deployment.yaml
-                        """
+                        '''
                     }
                 }
             }
