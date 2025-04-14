@@ -1,92 +1,76 @@
 pipeline {
     agent any
 
-    environment {
-        DOCKER_CREDENTIALS = credentials('docker-hub-credentials')
-        DOCKER_IMAGE = 'caroline1105/java-app'
-        DOCKER_TAG = "${BUILD_NUMBER}"
+    tools {
+        jdk 'Java 17'
     }
 
-    tools {
-        jdk 'JDK-17'
+    environment {
+        SCANNER_HOME = tool 'SonarQubeScanner'
     }
 
     stages {
         stage('Checkout') {
             steps {
-                checkout scm
+                git 'https://github.com/caroline1105/midterm-535.git'
             }
         }
 
-        stage('Build with Java 17') {
+        stage('Build') {
             steps {
                 bat 'javac src\\Main.java'
             }
         }
 
-        stage('Run Tests with Java 11') {
-            tools {
-                jdk 'JDK-11'
-            }
+        stage('Test') {
             steps {
                 bat '''
                     if not exist lib mkdir lib
-
                     curl -L -o lib\\junit-4.13.2.jar https://repo1.maven.org/maven2/junit/junit/4.13.2/junit-4.13.2.jar
                     curl -L -o lib\\hamcrest-core-1.3.jar https://repo1.maven.org/maven2/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar
-
                     javac -cp "lib\\junit-4.13.2.jar;." src\\MyTests.java src\\Main.java
                     java -cp "lib\\junit-4.13.2.jar;lib\\hamcrest-core-1.3.jar;.;src" org.junit.runner.JUnitCore MyTests
                 '''
             }
         }
 
-        stage('Code Quality Analysis with Java 8') {
-            tools {
-                jdk 'JDK-8'
-            }
+        stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('SonarQube') {
+                    bat "\"${env.SCANNER_HOME}\\bin\\sonar-scanner.bat\" -Dsonar.projectKey=java-app -Dsonar.sources=src -Dsonar.java.binaries=."
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            steps {
+                timeout(time: 1, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                bat 'docker build -t java-app .'
+            }
+        }
+
+        stage('Docker Push') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                     bat '''
-                        "%SONAR_RUNNER_HOME%\\bin\\sonar-scanner.bat" ^
-                        -Dsonar.projectKey=java-app ^
-                        -Dsonar.sources=src ^
-                        -Dsonar.java.binaries=. ^
-                        -Dsonar.host.url=http://localhost:9000
+                        docker login -u %DOCKER_USER% -p %DOCKER_PASS%
+                        docker tag java-app %DOCKER_USER%/java-app
+                        docker push %DOCKER_USER%/java-app
                     '''
-                }
-            }
-        }
-
-        stage('Build Docker Image') {
-            steps {
-                script {
-                    docker.build("${DOCKER_IMAGE}:${DOCKER_TAG}")
-                }
-            }
-        }
-
-        stage('Push to Docker Registry') {
-            steps {
-                script {
-                    docker.withRegistry('https://registry.hub.docker.com', 'docker-hub-credentials') {
-                        docker.image("${DOCKER_IMAGE}:${DOCKER_TAG}").push()
-                        docker.image("${DOCKER_IMAGE}:${DOCKER_TAG}").push('latest')
-                    }
                 }
             }
         }
 
         stage('Deploy to Kubernetes') {
             steps {
-                script {
-                    withKubeConfig([credentialsId: 'kubernetes-credentials']) {
-                        bat '''
-                            powershell -Command "(Get-Content deployment.yaml) -replace 'java-app:latest', '${DOCKER_IMAGE}:${DOCKER_TAG}' | Set-Content deployment.yaml"
-                            kubectl apply -f deployment.yaml
-                        '''
-                    }
-                }
+                bat 'kubectl apply -f k8s/deployment.yaml'
             }
         }
     }
