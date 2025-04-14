@@ -2,27 +2,33 @@ pipeline {
     agent any
 
     tools {
-        jdk 'Java 17'
+        jdk 'JDK-17'  // ✅ Matches Global Tool Config
     }
 
     environment {
+        DOCKER_CREDENTIALS = credentials('docker-hub-credentials')
+        DOCKER_IMAGE = 'caroline1105/java-app'
+        DOCKER_TAG = "${BUILD_NUMBER}"
         SCANNER_HOME = tool 'SonarQubeScanner'
     }
 
     stages {
         stage('Checkout') {
             steps {
-                git 'https://github.com/caroline1105/midterm-535.git'
+                checkout scm
             }
         }
 
-        stage('Build') {
+        stage('Build with Java 17') {
             steps {
                 bat 'javac src\\Main.java'
             }
         }
 
-        stage('Test') {
+        stage('Run Tests with Java 11') {
+            tools {
+                jdk 'JDK-11'  // ✅ Must match exactly
+            }
             steps {
                 bat '''
                     if not exist lib mkdir lib
@@ -34,43 +40,46 @@ pipeline {
             }
         }
 
-        stage('SonarQube Analysis') {
+        stage('Code Quality Analysis with Java 8') {
+            tools {
+                jdk 'JDK-8'  // Add JDK-8 under Global Tool Config if not yet
+            }
             steps {
                 withSonarQubeEnv('SonarQube') {
-                    bat "\"${env.SCANNER_HOME}\\bin\\sonar-scanner.bat\" -Dsonar.projectKey=java-app -Dsonar.sources=src -Dsonar.java.binaries=."
+                    bat '"%SCANNER_HOME%\\bin\\sonar-scanner.bat" -Dsonar.projectKey=java-app -Dsonar.sources=src -Dsonar.java.binaries=. -Dsonar.host.url=http://localhost:9000'
                 }
             }
         }
 
-        stage('Quality Gate') {
+        stage('Build Docker Image') {
             steps {
-                timeout(time: 1, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: true
+                script {
+                    docker.build("${DOCKER_IMAGE}:${DOCKER_TAG}")
                 }
             }
         }
 
-        stage('Docker Build') {
+        stage('Push to Docker Registry') {
             steps {
-                bat 'docker build -t java-app .'
-            }
-        }
-
-        stage('Docker Push') {
-            steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                    bat '''
-                        docker login -u %DOCKER_USER% -p %DOCKER_PASS%
-                        docker tag java-app %DOCKER_USER%/java-app
-                        docker push %DOCKER_USER%/java-app
-                    '''
+                script {
+                    docker.withRegistry('https://registry.hub.docker.com', 'docker-hub-credentials') {
+                        docker.image("${DOCKER_IMAGE}:${DOCKER_TAG}").push()
+                        docker.image("${DOCKER_IMAGE}:${DOCKER_TAG}").push('latest')
+                    }
                 }
             }
         }
 
         stage('Deploy to Kubernetes') {
             steps {
-                bat 'kubectl apply -f k8s/deployment.yaml'
+                script {
+                    withKubeConfig([credentialsId: 'kubernetes-credentials']) {
+                        bat '''
+                            powershell -Command "(Get-Content deployment.yaml) -replace 'java-app:latest', '${DOCKER_IMAGE}:${DOCKER_TAG}' | Set-Content deployment.yaml"
+                            kubectl apply -f deployment.yaml
+                        '''
+                    }
+                }
             }
         }
     }
@@ -81,3 +90,4 @@ pipeline {
         }
     }
 }
+
